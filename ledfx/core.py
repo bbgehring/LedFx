@@ -138,7 +138,7 @@ class LedFxCore(object):
         async_fire_and_forget(self.async_stop(exit_code), self.loop)
 
     def menu_handler(self):
-        event = self.tray.read()
+        event = self.tray.read(500)
         if event == "Launch Web UI":
             launch_ui(self.http.host, self.http.port, self.http.base_url)
         elif event == "Exit":
