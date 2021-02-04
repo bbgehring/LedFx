@@ -4,7 +4,10 @@ import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 
+import PySimpleGUIWx as sg
+
 from ledfx.config import load_config, load_default_presets, save_config
+from ledfx.consts import SYSTRAY_ICON
 from ledfx.devices import Devices
 from ledfx.effects import Effects
 from ledfx.events import Events, LedFxShutdownEvent
@@ -14,6 +17,7 @@ from ledfx.utils import (
     RollingQueueHandler,
     async_fire_and_forget,
     currently_frozen,
+    launch_ui,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +32,8 @@ class LedFxCore(object):
         self.config["default_presets"] = load_default_presets()
         host = host if host else self.config["host"]
         port = port if port else self.config["port"]
+        menu_def = ["UNUSED", ["Launch Web UI", "---", "Exit"]]
+        self.tray = sg.SystemTray(menu=menu_def, data_base64=SYSTRAY_ICON)
 
         if sys.platform == "win32":
             self.loop = asyncio.ProactorEventLoop()
@@ -106,7 +112,7 @@ class LedFxCore(object):
         return self.exit_code
 
     async def async_start(self, open_ui=False):
-        _LOGGER.info("Starting ledfx")
+        _LOGGER.info("Starting LedFx")
         await self.http.start()
 
         self.devices = Devices(self)
@@ -116,35 +122,28 @@ class LedFxCore(object):
         # TODO: Deferr
         self.devices.create_from_config(self.config["devices"])
         self.integrations.create_from_config(self.config["integrations"])
-
-        if not self.devices.values():
-            _LOGGER.info("No devices saved in config.")
-            async_fire_and_forget(self.devices.find_wled_devices(), self.loop)
+        # Since we ignore duplicate WLED devices, may as well search on startup
+        async_fire_and_forget(self.devices.find_wled_devices(), self.loop)
 
         async_fire_and_forget(
             self.integrations.activate_integrations(), self.loop
         )
 
         if open_ui:
-            import webbrowser
-
-            # Check if we're binding to all adaptors
-            if str(self.config["host"]) == "0.0.0.0":
-                url = f"http://127.0.0.1:{str(self.config['port'])}"
-            else:
-                # If the user has specified an adaptor, launch its address
-                url = self.http.base_url
-            try:
-                webbrowser.get().open(url)
-            except webbrowser.Error:
-                _LOGGER.warning(
-                    f"Failed to open default web browser. To access LedFx's web ui, open {url} in your browser. To prevent this error in future, configure a default browser for your system."
-                )
+            launch_ui(self.http.host, self.http.port, self.http.base_url)
 
         await self.flush_loop()
 
     def stop(self, exit_code=0):
         async_fire_and_forget(self.async_stop(exit_code), self.loop)
+
+    def menu_handler(self):
+        event = self.tray.read()
+        if event == "Launch Web UI":
+            launch_ui(self.http.host, self.http.port, self.http.base_url)
+        elif event == "Exit":
+            self.tray.show_message("LedFx Shutdown", "Closing LedFx")
+            self.stop()
 
     async def async_stop(self, exit_code=0):
         if not self.loop:

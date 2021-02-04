@@ -9,6 +9,7 @@ import pkgutil
 import re
 import socket
 import sys
+import webbrowser
 from abc import ABC
 
 # from asyncio import coroutines, ensure_future
@@ -271,6 +272,33 @@ def adjust_wled_brightness(device_ip, device_name, brightness):
     except requests.exceptions.RequestException as CapturedError:
         _LOGGER.warning(
             f"Error Adjusting {device_name} brightness: {CapturedError}"
+        )
+
+
+def launch_ui(host, port, base_url):
+    """
+        Uses the browser library to launch a web browser and navigate to the local LedFx address
+
+    Args:
+        host (string): The HTTP server host address
+        port (string): The HTTP server listen port
+        base_url (string): The HTTP server host + port, URL formatted.
+
+    Returns:
+        Nil
+    """
+
+    # Check if we're binding to all adaptors
+    if host == "0.0.0.0":
+        url = f"http://127.0.0.1:{port}"
+    else:
+        # If the user has specified an adaptor, launch its address
+        url = base_url
+    try:
+        webbrowser.get().open(url)
+    except webbrowser.Error:
+        _LOGGER.warning(
+            f"Failed to open default web browser. To access LedFx's web ui, open {url} in your browser. To prevent this error in future, configure a default browser for your system."
         )
 
 
